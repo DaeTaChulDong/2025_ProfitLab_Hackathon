@@ -116,7 +116,7 @@ Streamlit 기반의 메인 웹 애플리케이션입니다.
 
 Session State: 분석 결과와 생성된 이미지를 캐싱하여, 이메일 발송 등 추가 작업 시 리로딩 없이 데이터를 유지합니다.
 
-Strict Language Separation: 분석 리포트는 한국어로, 이미지 생성 프롬프트는 영어로 처리하도록 GPT-4o의 출력을 엄격하게 제어합니다.
+Strict Language Separation: 분석 리포트는 한국어로, 이미지 생성 프롬프트는 영어로 처리하도록 GPT-4o의 출력을 제어합니다.
 
 Email Service: SMTP를 연동하여 분석된 전체 리포트를 사용자의 이메일로 즉시 발송합니다.
 
