@@ -10,14 +10,12 @@
 
 ## 🛠 실행 환경 (Execution Environment)
 
-이 프로젝트는 고성능 AI 모델(Whisper Large-v3 등)의 원활한 구동을 위해 다음 환경에 최적화되어 있습니다.
-
 * **Platform:** Google Colab
-* **GPU:** **NVIDIA A100** (권장) 또는 T4 이상
-* *Whisper Large 모델과 영상 처리 로직의 병렬 처리를 위해 고성능 GPU가 필요합니다.*
+* **GPU:** **NVIDIA A100**
+* *Whisper Large 모델과 영상 처리 로직의 병렬 처리를 위해 고성능 GPU 필요.*
 
 
-* **External Access:** Cloudflare Tunnel (`cloudflared`) 사용
+* **External Access:** Cloudflare Tunnel (cloudflared 사용)
 
 ---
 
@@ -60,7 +58,7 @@ Think:it Pro는 단순한 API 래퍼가 아닌, **데이터 기반의 복합적�
 
 ## 📂 주요 파일 설명 (File Structure)
 
-### 1. `app.py` (Main Application)
+### 1. `main.py` (Main Application)
 
 * Streamlit 기반의 메인 웹 애플리케이션입니다.
 * UI 렌더링, 세션 상태 관리(`st.session_state`), 모델 Lazy Loading, 이메일 발송(SMTP) 등 서비스의 모든 핵심 기능이 통합되어 있습니다.
@@ -84,8 +82,8 @@ Think:it Pro는 단순한 API 래퍼가 아닌, **데이터 기반의 복합적�
 
 ## 🚀 실행 방법 (How to Run)
 
-1. **Google Colab**을 엽니다. (런타임 유형: T4 또는 A100 GPU 선택)
-2. `app.py` 및 필요한 파일들을 업로드합니다.
+1. **Google Colab**을 엽니다. (런타임 유형: A100 GPU 선택)
+2. `main.py` 및 필요한 파일들을 업로드합니다.
 3. 필수 라이브러리를 설치합니다.
 4. 보안 비밀(Secrets)에 `OPENAI_API_KEY`, `EMAIL_SENDER`, `EMAIL_PASSWORD`를 설정합니다.
 5. 아래 명령어로 서버를 실행합니다.
