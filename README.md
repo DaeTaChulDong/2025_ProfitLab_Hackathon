@@ -77,7 +77,7 @@ pip install streamlit openai torch torchvision torchaudio transformers accelerat
 
 ## 🧠 메인 백엔드 로직 (Main Backend Logic)
 
-Think:it Pro는 단순한 API 래퍼가 아닌, **데이터 기반의 복합적인 파이프라인**을 통해 결과를 도출합니다.
+Think:it Pro는 **데이터 기반의 복합적인 파이프라인**을 통해 결과를 도출합니다.
 
 ### 1. 멀티모달 데이터 추출 (Multimodal Extraction)
 
@@ -87,9 +87,21 @@ Think:it Pro는 단순한 API 래퍼가 아닌, **데이터 기반의 복합적�
 ### 2. 데이터 드리븐 벤치마킹 (Data-Driven Benchmarking)
 
 * **Real-time Comparison:** 추출된 사용자 데이터(대본, 시각 정보)를 `youtube_top200_data.csv`에 저장된 '실제 인기 영상 메타데이터'와 실시간으로 비교합니다.
-* **Scoring Algorithm:** 해당 카테고리 상위 1% 영상들의 평균 조회수, 키워드 패턴, 썸네일 특징을 기준점으로 삼아 사용자의 영상을 60~100점 척도로 평가합니다.
+* **Scoring Algorithm:** 해당 카테고리 조회수 상위 영상들의 평균 조회수, 키워드 패턴, 썸네일 특징을 기준점으로 삼아 사용자의 영상을 60~100점 척도로 평가합니다.
 
 ### 3. 생성형 AI 솔루션 (Generative AI Solution)
+
+Personalized Prompt Engineering: 사용자가 입력한 한국어 요청 사항("텍스트를 크게 넣어줘", "밝은 분위기로 해줘")을 GPT-4o가 영어로 번역하여 이미지 생성 프롬프트에 반영합니다.
+
+Thumbnail Variations: DALL-E 3를 활용하여 서로 다른 3가지 전략의 썸네일을 생성합니다.
+
+Style 1 (High CTR): 강렬한 색감과 큰 텍스트로 클릭을 유도하는 어그로형
+
+Style 2 (Emotional): 감성적이고 스토리텔링이 강조된 스타일
+
+Style 3 (Informative): 깔끔하고 정보 전달이 명확한 스타일
+
+Text Rendering: 영상의 핵심 키워드를 추출하여 AI가 생성된 이미지 내에 직접 텍스트(타이포그래피)를 렌더링하도록 지시합니다.
 
 * **GPT-4o Reasoning:** 시각 데이터와 청각 데이터를 종합하여, 클릭률(CTR)을 높일 수 있는 제목 3종과 개선 전략을 도출합니다.
 * **DALL-E 3 Thumbnail:** 분석된 데이터를 바탕으로 GPT-4o가 최적의 프롬프트를 작성하고, 이를 DALL-E 3에 전달하여 **클릭을 부르는 고화질 썸네일**을 즉시 생성 및 제공합니다.
@@ -100,8 +112,13 @@ Think:it Pro는 단순한 API 래퍼가 아닌, **데이터 기반의 복합적�
 
 ### 1. `main.py` (Main Application)
 
-* Streamlit 기반의 메인 웹 애플리케이션입니다.
-* UI 렌더링, 세션 상태 관리(`st.session_state`), 모델 Lazy Loading, 이메일 발송(SMTP) 등 서비스의 모든 핵심 기능이 통합되어 있습니다.
+Streamlit 기반의 메인 웹 애플리케이션입니다.
+
+Session State: 분석 결과와 생성된 이미지를 캐싱하여, 이메일 발송 등 추가 작업 시 리로딩 없이 데이터를 유지합니다.
+
+Strict Language Separation: 분석 리포트는 한국어로, 이미지 생성 프롬프트는 영어로 처리하도록 GPT-4o의 출력을 엄격하게 제어합니다.
+
+Email Service: SMTP를 연동하여 분석된 전체 리포트를 사용자의 이메일로 즉시 발송합니다.
 
 ### 2. `VideoCollect.py` (Data Crawler)
 
