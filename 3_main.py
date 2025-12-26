@@ -15,22 +15,22 @@ from google.colab import userdata
 # [중요] 무거운 라이브러리는 Lazy Loading (속도 최적화)
 
 # =========================================================
-# 1. 페이지 설정 & 세션 상태 초기화 (초기화 방지 핵심)
+# 1. 페이지 설정 & 세션 상태 초기화
 # =========================================================
 st.set_page_config(page_title="Think:it Pro", page_icon="⚡", layout="wide")
 
-# 세션 상태(Session State)에 데이터 저장 공간 만들기
+# 세션 상태(Session State) 초기화
 if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
 if 'frames_data' not in st.session_state:
     st.session_state.frames_data = None
-if 'dalle_bytes' not in st.session_state:
-    st.session_state.dalle_bytes = None
+if 'dalle_variations' not in st.session_state:
+    st.session_state.dalle_variations = []
 if 'uploaded_file_name' not in st.session_state:
     st.session_state.uploaded_file_name = None
 
 # =========================================================
-# 2. CSS 스타일 (UI 디자인)
+# 2. CSS 스타일
 # =========================================================
 st.markdown("""
 <style>
@@ -65,18 +65,18 @@ st.markdown("""
     .bg-2 { background-color: #C0C0C0; color: #333; }
     .bg-3 { background-color: #CD7F32; color: white; }
     .dalle-card {
-        border: 2px solid #7c4dff; background-color: #f3e5f5; border-radius: 12px; padding: 15px; text-align: center;
+        border: 1px solid #ddd; background-color: #fff; border-radius: 12px; padding: 15px; text-align: center; height: 100%;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     .stFileUploader { padding: 15px; border: 2px dashed #FF4B4B; border-radius: 15px; text-align: center;}
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 3. 기능 함수 (이메일 & DALL-E)
+# 3. 기능 함수
 # =========================================================
 
 def send_email_smtp(to_email, subject, body):
-    # Secrets 로드
     try:
         sender_email = userdata.get('EMAIL_SENDER')
         sender_password = userdata.get('EMAIL_PASSWORD')
@@ -97,7 +97,6 @@ def send_email_smtp(to_email, subject, body):
         msg['Subject'] = Header(subject, 'utf-8')
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        # Gmail SMTP (587 TLS)
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.ehlo()
         server.starttls()
@@ -106,8 +105,6 @@ def send_email_smtp(to_email, subject, body):
         server.sendmail(sender_email, to_email, text)
         server.quit()
         return True, "✅ 이메일이 성공적으로 발송되었습니다!"
-    except smtplib.SMTPAuthenticationError:
-        return False, "❌ 인증 실패: 앱 비밀번호가 맞는지 확인해주세요."
     except Exception as e:
         return False, f"❌ 발송 에러: {str(e)}"
 
@@ -144,6 +141,16 @@ cat_list = df['Category_Name'].unique() if not df.empty else ["General", "Vlog",
 with st.sidebar:
     st.header("📊 설정")
     category = st.selectbox("카테고리 선택", cat_list)
+    
+    st.markdown("---")
+    st.header("💬 AI 맞춤 요청 (Option)")
+    st.caption("원하는 분위기나 필수 텍스트를 적어주세요.")
+    user_custom_prompt = st.text_area(
+        "추가 프롬프트 입력", 
+        placeholder="예: 텍스트 'VLOG'를 크게 넣어줘. 전체적으로 밝은 톤으로.",
+        height=100
+    )
+    
     st.markdown("---")
     st.info("💡 Cloudflare Tunnel로 연결되어 훨씬 빠릅니다.")
 
@@ -155,18 +162,15 @@ with st.expander("📤 영상 파일 업로드 (MP4)", expanded=True):
 # 5. 분석 로직 (버튼 클릭 시)
 # =========================================================
 if uploaded_file:
-    # 파일을 저장하고 경로를 확보
     tfile = "temp_input.mp4"
     with open(tfile, "wb") as f:
         f.write(uploaded_file.read())
     
-    # 분석 버튼
     if st.button("🚀 AI 데이터 분석 & 썸네일 생성 시작", type="primary", use_container_width=True):
         
-        # 파일명 세션 저장
         st.session_state.uploaded_file_name = uploaded_file.name
         
-        with st.status("⚙️ AI 엔진 가동 중... (약 1분 소요)", expanded=True) as status:
+        with st.status("⚙️ AI 엔진 가동 중... (약 1~2분 소요)", expanded=True) as status:
             try:
                 import torch
                 import cv2
@@ -180,11 +184,9 @@ if uploaded_file:
                 st.error("라이브러리 로딩 실패")
                 st.stop()
 
-            # API 키 확인
             API_KEY = None
-            try:
-                API_KEY = userdata.get('OPENAI_API_KEY')
-            except:
+            try: API_KEY = userdata.get('OPENAI_API_KEY')
+            except: 
                 try: API_KEY = st.secrets["OPENAI_API_KEY"]
                 except: pass
             
@@ -194,7 +196,6 @@ if uploaded_file:
                 
             client = OpenAI(api_key=API_KEY)
 
-            # 모델 로드
             @st.cache_resource
             def load_models():
                 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -216,7 +217,6 @@ if uploaded_file:
             st.write("🎙️ Whisper 모델 준비 중...")
             whisper_pipe = load_models()
             
-            # 데이터 추출
             st.write("👀 영상/오디오 데이터 추출 중...")
             clip = VideoFileClip(tfile)
             audio_path = "temp_audio.mp3"
@@ -226,7 +226,6 @@ if uploaded_file:
             duration = clip.duration
             wpm = (len(text.split()) / duration) * 60
             
-            # Vision Extraction & Image Download Prep
             cap = cv2.VideoCapture(tfile)
             temp_frames_data = []
             timestamps = [duration * 0.15, duration * 0.5, duration * 0.85]
@@ -256,26 +255,56 @@ if uploaded_file:
             clip.close()
             if os.path.exists(audio_path): os.remove(audio_path)
 
-            # GPT-4o 분석 (점수 프롬프트 수정됨)
-            st.write("🧠 GPT-4o 심층 분석 중...")
-            prompt = f"""
-            당신은 데이터 기반의 유튜브 전문 컨설턴트입니다. 카테고리: '{category}'
-            [영상 데이터] 대본: {text[:1500]}..., WPM: {int(wpm)}
+            # GPT-4o 분석
+            st.write("🧠 GPT-4o 심층 분석 및 카피라이팅 기획 중...")
             
-            분석 지침:
-            1. 점수는 60점에서 95점 사이로 현실적으로 부여하세요. (완벽하지 않다면 100점은 지양)
-            2. 지나치게 비판적이기보다 발전 가능성을 중심으로 긍정적인 피드백을 주세요.
-            3. DALL-E 3용 썸네일 프롬프트(thumbnail_prompt)는 영어로 작성하세요.
+            custom_instruction_text = ""
+            if user_custom_prompt:
+                custom_instruction_text = f"""
+                [User's Custom Request]
+                User Input: "{user_custom_prompt}"
+                Action: 
+                1. Translate this input into English.
+                2. Apply the translated intent to ALL 'thumbnail_variations' prompts.
+                """
 
-            Output JSON:
+            prompt = f"""
+            당신은 한국의 유튜브 데이터 분석 및 썸네일 전문가입니다. 
+            카테고리: '{category}'
+            [데이터] 대본: {text[:1500]}..., WPM: {int(wpm)}
+            
+            {custom_instruction_text}
+
+            [작업 지시사항]
+            1. **분석 리포트 (한국어 필수)**: 점수(60~95), 코멘트, 전략 등을 한국어로 작성.
+            
+            2. **제목 추천 (한국어 필수)**:
+               - 클릭률(CTR)을 높일 수 있는 **서로 다른 3가지 전략**의 제목을 제안하세요.
+               - 전략 1: 호기심 자극형 (Curiosity Gap)
+               - 전략 2: 문제 해결/이익 강조형 (Benefit/How-to)
+               - 전략 3: 강력한 비교/어그로형 (Strong/Controversial)
+            
+            3. **썸네일 프롬프트 (영어 필수)**:
+               - DALL-E 3를 위한 3가지 스타일 프롬프트 작성.
+               - 영상의 핵심 키워드를 이미지 내에 텍스트로 포함하도록 지시.
+
+            [Output JSON]
             {{
-                "score": (int, 60-95),
-                "score_comment": (string, 한국어 한 줄 평),
-                "summary_points": ["전략1(한글)", "전략2(한글)"],
-                "scene_reasons": ["1순위 이유", "2순위 이유", "3순위 이유"],
-                "titles": [{{"text": "제목1", "why": "이유"}}, {{"text": "제목2", "why": "이유"}}, {{"text": "제목3", "why": "이유"}}],
-                "detail_analysis": (string, 상세 피드백),
-                "thumbnail_prompt": (string, English prompt)
+                "score": (int),
+                "score_comment": (string, 한국어),
+                "summary_points": ["string (한국어)", "string (한국어)"],
+                "scene_reasons": ["string (한국어)", "string (한국어)", "string (한국어)"],
+                "titles": [
+                    {{"text": "제목 1 (호기심)", "why": "이 제목이 선택된 이유..."}},
+                    {{"text": "제목 2 (문제해결)", "why": "이 제목이 선택된 이유..."}},
+                    {{"text": "제목 3 (강력함)", "why": "이 제목이 선택된 이유..."}}
+                ],
+                "detail_analysis": (string, 한국어),
+                "thumbnail_variations": [
+                    {{"style_name": "강렬한 클릭 유도형", "prompt": "English prompt..."}},
+                    {{"style_name": "감성 스토리형", "prompt": "English prompt..."}},
+                    {{"style_name": "깔끔한 정보형", "prompt": "English prompt..."}}
+                ]
             }}
             """
             
@@ -288,34 +317,39 @@ if uploaded_file:
             )
             result = json.loads(response.choices[0].message.content)
 
-            # DALL-E 3 이미지 생성
-            st.write("🎨 AI 썸네일 생성 중...")
-            dalle_url, dalle_bytes = generate_dalle_image(client, result['thumbnail_prompt'])
+            # DALL-E 3 이미지 생성 (Loop)
+            st.write("🎨 AI 썸네일 3종 생성 중... (텍스트 렌더링 포함)")
             
-            # [핵심] 결과를 세션 상태에 저장
+            dalle_results = []
+            for variation in result.get('thumbnail_variations', []):
+                img_url, img_data = generate_dalle_image(client, variation['prompt'])
+                if img_data:
+                    dalle_results.append({
+                        "style": variation['style_name'],
+                        "prompt": variation['prompt'],
+                        "image": img_data
+                    })
+            
             st.session_state.analysis_result = result
             st.session_state.frames_data = temp_frames_data
-            st.session_state.dalle_bytes = dalle_bytes
+            st.session_state.dalle_variations = dalle_results
             
-            status.update(label="✅ 분석 완료! 리포트를 생성합니다.", state="complete", expanded=False)
-            
-            # 페이지 리로드 (중요: 세션 상태에 저장된 데이터를 UI에 반영하기 위함)
+            status.update(label="✅ 분석 및 생성 완료!", state="complete", expanded=False)
             st.rerun()
 
 # =========================================================
-# 6. 결과 리포트 UI (세션 상태에 데이터가 있을 때만 표시)
+# 6. 결과 리포트 UI
 # =========================================================
 if st.session_state.analysis_result is not None:
     result = st.session_state.analysis_result
     frames_data = st.session_state.frames_data
-    dalle_bytes = st.session_state.dalle_bytes
+    dalle_variations = st.session_state.dalle_variations
     file_name = st.session_state.uploaded_file_name
 
     st.divider()
 
-    # [1] 상단: 종합 점수 / 파일 정보
+    # [1] 상단
     col_top_L, col_top_R = st.columns([1, 1], gap="medium")
-
     with col_top_L:
         st.markdown('<div class="section-header" style="text-align:center;">🏆 종합 트렌드 적합도</div>', unsafe_allow_html=True)
         st.markdown(f"""
@@ -341,55 +375,44 @@ if st.session_state.analysis_result is not None:
     st.markdown("---")
 
     # [2] 중단: 1, 2, 3순위 장면
-    st.markdown('<div class="section-header">📸 썸네일 장면 추천 (Best 3)</div>', unsafe_allow_html=True)
-    
+    st.markdown('<div class="section-header">📸 영상 캡처 추천 (Best 3)</div>', unsafe_allow_html=True)
     thumb_c1, thumb_c2, thumb_c3 = st.columns(3, gap="medium")
 
-    with thumb_c1:
-        st.markdown(f'<span class="rank-tag bg-1">🥇 1순위</span>', unsafe_allow_html=True)
-        st.image(frames_data[0]['img'], use_container_width=True)
-        st.download_button("📥 다운로드", frames_data[0]['bytes'], "rank1.jpg", "image/jpeg", use_container_width=True)
-        st.caption(result['scene_reasons'][0])
-
-    with thumb_c2:
-        st.markdown(f'<span class="rank-tag bg-2">🥈 2순위</span>', unsafe_allow_html=True)
-        st.image(frames_data[1]['img'], use_container_width=True)
-        st.download_button("📥 다운로드", frames_data[1]['bytes'], "rank2.jpg", "image/jpeg", use_container_width=True)
-        st.caption(result['scene_reasons'][1])
-
-    with thumb_c3:
-        st.markdown(f'<span class="rank-tag bg-3">🥉 3순위</span>', unsafe_allow_html=True)
-        st.image(frames_data[2]['img'], use_container_width=True)
-        st.download_button("📥 다운로드", frames_data[2]['bytes'], "rank3.jpg", "image/jpeg", use_container_width=True)
-        st.caption(result['scene_reasons'][2])
+    for i, col in enumerate([thumb_c1, thumb_c2, thumb_c3]):
+        with col:
+            st.markdown(f'<span class="rank-tag bg-{i+1}">{i+1}순위</span>', unsafe_allow_html=True)
+            st.image(frames_data[i]['img'], use_container_width=True)
+            st.download_button("📥 다운로드", frames_data[i]['bytes'], f"capture_{i+1}.jpg", "image/jpeg", use_container_width=True)
+            st.caption(result['scene_reasons'][i])
 
     st.markdown("---")
 
-    # [NEW] DALL-E 3
-    st.markdown('<div class="section-header">🎨 AI 생성 썸네일 (DALL-E 3)</div>', unsafe_allow_html=True)
-    dalle_col1, dalle_col2 = st.columns([1, 1], gap="large")
+    # [NEW] DALL-E 3 베리에이션 (텍스트 포함)
+    st.markdown('<div class="section-header">🎨 AI 완성형 썸네일 (텍스트 포함)</div>', unsafe_allow_html=True)
+    st.info("💡 Tip: AI가 영상 내용을 요약한 **핵심 키워드**를 이미지 안에 직접 써넣었습니다.")
     
-    with dalle_col1:
-        if dalle_bytes:
-            st.image(dalle_bytes, caption="GPT-4o & DALL-E 3 생성", use_container_width=True)
-            st.download_button("📥 AI 썸네일 다운로드", dalle_bytes, "ai_thumb.png", "image/png", type="primary", use_container_width=True)
-        else:
-            st.error("이미지 생성 실패")
-    
-    with dalle_col2:
-        st.markdown(f"""
-        <div class="dalle-card">
-            <h4>🤖 AI 제작 의도</h4>
-            <p style="text-align:left; font-size:0.95rem; color:#555;">
-            분석 결과를 바탕으로 클릭률을 높일 수 있는 구도의 썸네일을 생성했습니다.<br>
-            이 이미지에 텍스트를 얹어 사용하세요.
-            </p>
-            <hr>
-            <div style="font-size:0.8rem; color:#999; text-align:left;">
-            <b>Prompt:</b> {result.get('thumbnail_prompt', 'N/A')[:100]}...
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    if dalle_variations:
+        ai_cols = st.columns(3, gap="medium")
+        for i, var in enumerate(dalle_variations):
+            with ai_cols[i]:
+                st.markdown(f"""
+                <div style="background-color:#f3e5f5; border-radius:10px; padding:10px; text-align:center; margin-bottom:10px; font-weight:bold; color:#4a148c;">
+                    {var['style']}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.image(var['image'], use_container_width=True)
+                st.download_button(
+                    label=f"📥 {var['style']} 다운로드",
+                    data=var['image'],
+                    file_name=f"ai_thumb_{i+1}.png",
+                    mime="image/png",
+                    use_container_width=True
+                )
+                with st.expander("프롬프트 보기"):
+                    st.caption(var['prompt'])
+    else:
+        st.warning("이미지가 생성되지 않았습니다.")
 
     st.markdown("---")
 
@@ -416,17 +439,14 @@ if st.session_state.analysis_result is not None:
             {result['detail_analysis']}
         </div>
         """, unsafe_allow_html=True)
-        
-    # =========================================================
-    # 7. 이메일 발송 섹션 (UI 유지, 로직 작동)
-    # =========================================================
+
+    # 이메일 발송
     st.markdown("---")
     st.markdown('<div class="section-header">📧 결과 리포트 메일로 받기</div>', unsafe_allow_html=True)
     
     with st.container():
         col_email, col_btn = st.columns([3, 1])
         with col_email:
-            # key를 주어 입력값이 유지되도록 함
             user_email = st.text_input("받을 이메일 주소", placeholder="result@example.com", key="email_input")
         with col_btn:
             st.write("") 
@@ -436,7 +456,6 @@ if st.session_state.analysis_result is not None:
                     with st.spinner("메일 서버 접속 중..."):
                         email_body = f"""
                         [Think:it AI 유튜브 컨설팅 리포트]
-                        
                         종합 점수: {result['score']}점 ({result['score_comment']})
                         
                         [핵심 전략]
@@ -450,14 +469,9 @@ if st.session_state.analysis_result is not None:
                         
                         [상세 분석]
                         {result['detail_analysis']}
-                        
-                        * 썸네일 이미지는 웹사이트에서 직접 다운로드해주세요.
                         """
                         success, msg = send_email_smtp(user_email, f"[Think:it] {file_name} 분석 결과", email_body)
-                        
-                        if success:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
+                        if success: st.success(msg)
+                        else: st.error(msg)
                 else:
                     st.warning("이메일 주소를 입력해주세요.")
